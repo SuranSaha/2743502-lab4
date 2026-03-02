@@ -1,4 +1,3 @@
-
 const countryInput = document.getElementById('country-input');
 const searchBtn = document.getElementById('search-btn');
 const loadingSpinner = document.getElementById('loading-spinner');
@@ -6,6 +5,8 @@ const countryInfo = document.getElementById('country-info');
 const borderingCountries = document.getElementById('bordering-countries');
 const errorMessage = document.getElementById('error-message');
 
+
+let errorTimeout;
 
 function showLoading(show) {
     if (show) {
@@ -15,40 +16,52 @@ function showLoading(show) {
     }
 }
 
-
 function showError(message) {
+    
+    if (errorTimeout) {
+        clearTimeout(errorTimeout);
+    }
+    
+   
     errorMessage.textContent = message;
     errorMessage.classList.remove('hidden');
     
    
-    setTimeout(() => {
+    errorTimeout = setTimeout(() => {
         errorMessage.classList.add('hidden');
+        errorTimeout = null;
     }, 5000);
+    
+    
+    console.log('Error shown:', message);
 }
-
 
 function clearResults() {
     countryInfo.innerHTML = '';
     borderingCountries.innerHTML = '';
 }
 
-
 async function searchCountry(countryName) {
+
+    console.log('Searching for:', countryName);
     
+  
     if (!countryName || countryName.trim() === '') {
+        console.log('Empty input detected');
         showError('Please enter a country name');
         return;
     }
     
-   
+
+    countryName = countryName.trim();
+    
     clearResults();
     showLoading(true);
     
     try {
-      
+        console.log('Fetching data for:', countryName);
         const response = await fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}`);
         
-     
         if (!response.ok) {
             if (response.status === 404) {
                 throw new Error(`Country "${countryName}" not found`);
@@ -57,41 +70,45 @@ async function searchCountry(countryName) {
             }
         }
         
-        
         const data = await response.json();
+        console.log('Data received:', data);
         
-       
         const country = data[0];
-        
-    
         displayCountryInfo(country);
         
-       
         if (country.borders && country.borders.length > 0) {
             await fetchBorderingCountries(country.borders);
         } else {
-            
             borderingCountries.innerHTML = '<p class="no-borders">This country has no bordering countries.</p>';
         }
         
     } catch (error) {
-       
+        console.error('Error caught:', error);
         showError(error.message);
-        console.error('Error:', error);
     } finally {
-       
         showLoading(false);
     }
 }
 
 function displayCountryInfo(country) {
-   
     const formattedPopulation = country.population.toLocaleString();
-    
-    
     const capital = country.capital ? country.capital[0] : 'N/A';
     
- 
+
+    let languages = 'N/A';
+    if (country.languages) {
+        languages = Object.values(country.languages).join(', ');
+    }
+    
+
+    let currency = 'N/A';
+    if (country.currencies) {
+        const currencyCode = Object.keys(country.currencies)[0];
+        if (currencyCode) {
+            currency = country.currencies[currencyCode].name;
+        }
+    }
+    
     const countryHTML = `
         <h2>${country.name.common}</h2>
         <img src="${country.flags.svg}" alt="${country.name.common} flag" class="country-flag">
@@ -100,31 +117,32 @@ function displayCountryInfo(country) {
         <p><strong>Population:</strong> ${formattedPopulation}</p>
         <p><strong>Region:</strong> ${country.region}</p>
         <p><strong>Subregion:</strong> ${country.subregion || 'N/A'}</p>
-        <p><strong>Languages:</strong> ${country.languages ? Object.values(country.languages).join(', ') : 'N/A'}</p>
-        <p><strong>Currency:</strong> ${country.currencies ? Object.values(country.currencies)[0].name : 'N/A'}</p>
+        <p><strong>Languages:</strong> ${languages}</p>
+        <p><strong>Currency:</strong> ${currency}</p>
     `;
     
-   
     countryInfo.innerHTML = countryHTML;
 }
 
 async function fetchBorderingCountries(borderCodes) {
     try {
-        
         borderingCountries.innerHTML = '<p class="loading">Loading bordering countries...</p>';
         
+        const borderPromises = borderCodes.map(async (code) => {
+            try {
+                const response = await fetch(`https://restcountries.com/v3.1/alpha/${code}`);
+                const data = await response.json();
+                return data[0];
+            } catch (error) {
+                console.error(`Error fetching border country ${code}:`, error);
+                return null;
+            }
+        });
         
-        const borderPromises = borderCodes.map(code => 
-            fetch(`https://restcountries.com/v3.1/alpha/${code}`)
-                .then(res => res.json())
-                .then(data => data[0])
-        );
-        
-       
         const borderCountries = await Promise.all(borderPromises);
-        
        
-        displayBorderingCountries(borderCountries);
+        const validCountries = borderCountries.filter(country => country !== null);
+        displayBorderingCountries(validCountries);
         
     } catch (error) {
         console.error('Error fetching bordering countries:', error);
@@ -138,7 +156,6 @@ function displayBorderingCountries(countries) {
         return;
     }
     
-    
     const borderHTML = countries.map(country => `
         <div class="border-country">
             <h4>${country.name.common}</h4>
@@ -146,7 +163,6 @@ function displayBorderingCountries(countries) {
         </div>
     `).join('');
     
-   
     borderingCountries.innerHTML = `
         <h3>Bordering Countries (${countries.length})</h3>
         <div class="border-grid">
@@ -156,16 +172,25 @@ function displayBorderingCountries(countries) {
 }
 
 
+countryInput.addEventListener('input', () => {
+    if (errorTimeout) {
+        clearTimeout(errorTimeout);
+        errorTimeout = null;
+    }
+    errorMessage.classList.add('hidden');
+});
+
 searchBtn.addEventListener('click', () => {
-    const countryName = countryInput.value.trim();
+    const countryName = countryInput.value;
     searchCountry(countryName);
 });
 
-
 countryInput.addEventListener('keypress', (event) => {
     if (event.key === 'Enter') {
-        const countryName = countryInput.value.trim();
+        const countryName = countryInput.value;
         searchCountry(countryName);
     }
 });
 
+
+console.log('Script loaded successfully');
